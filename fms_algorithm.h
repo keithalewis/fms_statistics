@@ -5,6 +5,7 @@
 
 namespace fms::statistics {
 
+	// Use for error instead of throw.
 	template<class X>
 	constexpr X NaN = std::numeric_limits<X>::quiet_NaN();
 

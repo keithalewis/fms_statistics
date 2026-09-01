@@ -24,6 +24,12 @@
     <ClInclude Include="fms_algorithm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="fms_monoid.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fms_iterable.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fms_statistics.t.cpp">
