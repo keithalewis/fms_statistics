@@ -6,6 +6,7 @@
 #endif // _DEBUG
 #include <limits>
 
+#include "fms_monoid.h"
 #include "fms_iterable.h"
 #include "fms_algorithm.h"
 #include "fms_lmoments.h"

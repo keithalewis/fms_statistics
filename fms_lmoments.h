@@ -61,9 +61,4 @@ namespace fms::statistics {
 		}
 		return lr / ( r * binom(n, r));
 	}
-	constexpr std::array<double,3> x = {1, 2, 3};
-	constexpr std::span xs(x.data(), x.size());
-	constexpr double l1 = lmoment<double>(1, x); // 1
-	//static_assert(lmoment(1, x) == 2);
-	constexpr int lmoment_value = 2;
 }
