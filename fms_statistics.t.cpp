@@ -7,13 +7,10 @@ using namespace fms;
 
 int main()
 {
-	iterable::list_test();
 	iterable::interval_test();
-	iterable::vector v1({ 1,2 });
-	iterable::vector v2	({ 3,4 });
+	iterable::array_test();
 
 	//iterable::zip_test();
-	//iterable::interval<int*>::test();
 	
 	return 0;
 }

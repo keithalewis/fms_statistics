@@ -4,6 +4,7 @@
 #include <cassert>
 #endif // _DEBUG
 #include <algorithm>
+#include <array>
 #include <concepts>
 #include <cstddef>
 #include <forward_list>
@@ -25,14 +26,22 @@ namespace fms::iterable {
 	};
 
 	template<class I>
-	concept has_end = requires(I i) {
-		{ i.end() } -> std::convertible_to<I>;
+	concept has_begin = requires(I i) {
+		{ i.begin() };
 	};
+	static_assert(has_begin<std::array<int, 3>>);
+
+	template<class I>
+	concept has_end = requires(I i) {
+		{ i.end() } ;
+	};
+	static_assert(has_end<std::array<int, 3>>);
 
 	template<class I>
 	concept has_size = requires(I i) {
-		{ i.size() } -> std::convertible_to <size_t> ;
+		{ i.size() } -> std::convertible_to <std::size_t> ;
 	};
+	static_assert(has_size<std::array<int, 3>>);
 
 	template<class I>
 	concept is_endable = has_end<I> || has_size<I>;
@@ -48,31 +57,38 @@ namespace fms::iterable {
 #pragma region Functions
 
 	template<class I>
-	constexpr I begin(I i)
+	constexpr auto begin(I i)
 	{
-		return i;
+		if constexpr (has_begin<I>) {
+			return i.begin();
+		}
+		else {
+			return i;
+		}
 	}
 	
 	template<class I>
-	constexpr I end(I i)
+	constexpr auto end(I i)
 	{
 		if constexpr (has_end<I>) {
 			return i.end();
 		}
-		if constexpr (has_size<I> && std::random_access_iterator<I>) {
+		else if constexpr (has_size<I> && std::random_access_iterator<I>) {
 			return i.begin() + i.size();
 		}
-		// !!! could be infinite
-		while (i) {
-			++i;
-		}
+		else {
+			// !!! could be infinite
+			while (i) {
+				++i;
+			}
 
-		return i; 
+			return i;
+		}
 	}
 
 	// length(i,j) = length(i) + length(j)
 	template<class I> // std::weakly_incrementable???
-	constexpr std::size_t length(I i, std::size_t n = 0)
+	constexpr std::size_t length(I i, std::iter_difference_t<I> n = 0)
 	{
 		if constexpr (has_end<I>) {
 			return n + std::distance(i, i.end());
@@ -90,25 +106,23 @@ namespace fms::iterable {
 	}
 
 	// lexicographic comparison of iterable values
-	template<class I, class J>
+	template<is_endable I, is_endable J>
 	constexpr auto compare(I i, J j)
 	{
-		return std::lexicographical_compare_three_way(i, end(i), j, end(j));
+		return std::lexicographical_compare_three_way(iterable::begin(i), iterable::end(i), iterable::begin(j), iterable::end(j));
 	}
 	// spaceship operator helper
-	template<class I, class J> // is_endable??
+	template<is_endable I, is_endable J>
 	constexpr bool equal(I i, J j)
 	{
-		return std::equal(i, end(i), j, end(j));
+		return std::equal(iterable::begin(i), iterable::end(i), iterable::begin(j), iterable::end(j));
 	}
 
 	template<class I> // std::w_i
 	constexpr I drop(I i, std::size_t n = 1)
 	{
 		if constexpr (has_end<I>) {
-			size_t m = std::distance(i, i.end());
-
-			return std::next(i, std::min(n, m));
+			return std::next(i, std::min(n, std::distance(i, i.end())));
 		}
 		if constexpr (has_size<I>) {
 			return std::next(i, std::min(n, i.size()));
@@ -153,15 +167,13 @@ namespace fms::iterable {
 	template<std::input_iterator I>
 	class iterator {
 		I b, e;
-		using It = std::iterator_traits<I>;
 	public:
-		using iterator_category = It::iterator_category;
-		using value_type = It::value_type;
-		using difference_type = It::difference_type;
-		using pointer = It::pointer;
-		using reference = It::reference;
+		using value_type = std::iter_value_t<I>;
+		using difference_type = std::iter_difference_t<I>;
+		using reference = std::iter_reference_t<I>;
 
 		constexpr iterator()
+			: b{}, e{}
 		{ }
 		constexpr iterator(I b, I e)
 			: b{ b }, e{ e }
@@ -170,6 +182,7 @@ namespace fms::iterable {
 		constexpr iterator& operator=(const iterator&) = default;
 		constexpr ~iterator() = default;
 
+		// strong equality
 		constexpr bool operator==(const iterator& rhs) const
 		{
 			return b == rhs.b && e == rhs.e;
@@ -192,6 +205,7 @@ namespace fms::iterable {
 		{
 			return *b;
 		}
+		// No reference operator*() 
 		constexpr iterator& operator++()
 		{
 			if (b != e)
@@ -226,37 +240,97 @@ namespace fms::iterable {
 	}
 #endif // _DEBUG
 
-	// assumes lifetime of C
-	template<class C>
-	constexpr auto container(C& c)
-	{
-		return iterator(c.begin(), c.end());
-	}
-
-	// use const ref to extend lifetime of std::initializer_list<T>
-	template<class T>
-	class list : public iterator<T*> {
-		const std::initializer_list<T>& l;
+	// on the fly iterable
+	template<class T, std::size_t N>
+	class array : private std::array<T, N>, public iterator<T*> {
+		using a = std::array<T, N>;
 	public:
-		constexpr list(std::initializer_list<T> l)
-			: iterator<T*>(const_cast<T*>(l.begin()), const_cast<T*>(l.end())), l{ l }
+		template<class... Ts>
+			requires (sizeof...(Ts) == N && (std::convertible_to<Ts, T> && ...))
+		constexpr explicit array(Ts... ts)
+			: a{ static_cast<T>(ts)... }, iterator<T*>{ a::data(), a::data() + N }
+
 		{ }
-		constexpr list(const list&) = delete;
-		constexpr list& operator=(const list&) = delete;
-		constexpr ~list() = default;
+		constexpr array(const array& _a)
+		{
+			std::copy(_a.a::begin(), _a.a::end(), a::begin());
+		}
+		constexpr array& operator=(const array& _a)
+		{
+			if (this != &_a) {
+				std::copy(_a.a::begin(), _a.a::end(), a::begin());
+			}
+
+			return *this;
+		}
+		constexpr ~array() = default;
+		
+		constexpr auto begin() const
+		{
+			return a::begin();
+		}
+		constexpr auto end() const
+		{
+			return a::end();
+		}
 	};
+	// deduction guide for N
+	template<class T, class... Ts>
+	array(T, Ts...) -> array<T, 1 + sizeof...(Ts)>;
 #ifdef _DEBUG
-	inline void list_test()
+	inline void array_test()
 	{
-		auto l = list{ 1, 2, 3 };
-		assert(*l == 1);
-		assert(*++l == 2);
-		++l;
-		assert(*l == 3);
-		assert(!++l);
+		auto a = array{ 1, 2, 3 };
+		auto b = array{ 1, 2, 3 };
+		auto a2{ a };
+		assert(a2 != a);
+		a = a2;
+		assert(!(a == a2));
+		assert(a != b);
+		assert(equal(a, b));
+		assert(compare(a, b) == 0);
+
+		assert(*a == 1);
+		assert(*++a == 2);
+		++a;
+		assert(*a == 3);
+		assert(!++a);
 	}
 #endif // _DEBUG
 
+	template<class T>
+	class constant {
+		T t;
+	public:
+		using value_type = T;
+		using difference_type = std::iter_difference_t<T*>;
+		using reference = T&;
+
+		constexpr constant(T t = 0)
+			: t{ t }
+		{ }
+
+		constexpr explicit operator bool() const
+		{
+			return true;
+		}
+		constexpr value_type operator*() const
+		{
+			return t;
+		}
+		constexpr constant& operator++()
+		{
+			return *this;
+		}
+		constexpr constant operator++(int)
+		{
+			constant tmp{ *this };
+			return tmp;
+		}
+		// operator--(), operator--(int), operator+(int), operator-(int), operator+=(int), operator-=(int)
+	};
+
+	// take the first n values of an iterable
 	template<input_iterable I>
 	class take : public I {
 		std::size_t n;
@@ -277,7 +351,7 @@ namespace fms::iterable {
 		constexpr take& operator++()
 		{
 			--n;
-			++static_cast<I&>(*this);
+			I::operator++();
 
 			return *this;
 		}
@@ -296,6 +370,29 @@ namespace fms::iterable {
 	static_assert(0 == length(take(empty<int>(), 1)));
 	static_assert(2 == length(take(empty<int>(), 1), 2));
 	*/
+#endif // _DEBUG
+	template<class T>
+	constexpr auto empty()
+	{
+		return take(constant<T>(), 0);
+	}
+#ifdef _DEBUG
+	static_assert(!empty<int>().operator bool());
+	static_assert(!empty<int>());
+	constexpr auto e = (++empty<int>()).operator bool();
+	//static_assert(!++empty<int>());
+#endif // _DEBUG
+
+	template<class T>
+	constexpr auto singleton(T t)
+	{
+		return take(constant<T>(t), 1);
+	}
+#ifdef _DEBUG
+	static_assert(singleton(1).operator bool());
+	static_assert(singleton(1));
+	static_assert(*singleton(1) == 1);
+	static_assert(!++singleton(1));
 #endif // _DEBUG
 
 	// on the fly iterable
@@ -354,6 +451,7 @@ namespace fms::iterable {
 			
 			return tmp;
 		}
+		// operator--(), operator--(int), operator+(int), operator-(int), operator+=(int), operator-=(int)
 #ifdef _DEBUG
 		static void test()
 		{
@@ -396,10 +494,8 @@ namespace fms::iterable {
 	class ptr {
 		T* p;
 	public:
-		using iterator_category = std::iterator_traits<T*>::iterator_category;
 		using value_type = T;
 		using difference_type = ptrdiff_t;
-		using pointer = T*;
 		using reference = T&;
 
 		constexpr ptr(T* p)
@@ -619,15 +715,6 @@ namespace fms::iterable {
 	static_assert(*++stride(2, -3) == -1);
 	static_assert(*++stride(-2, -3) == -5);
 
-	template<class T>
-	constexpr auto singleton(T t)
-	{
-		return take(iota<T>(t), 1);
-	}
-	static_assert(singleton(1).operator bool());
-	static_assert(singleton(1));
-	static_assert(*singleton(1) == 1);
-	static_assert(!++singleton(1));
 
 	// [a, b) TODO: allow a > b?
 	template<class T>
