@@ -6,13 +6,9 @@
 #include <algorithm>
 #include <array>
 #include <concepts>
-#include <cstddef>
-#include <forward_list>
-#include <functional>
 #include <iterator>
 #include <limits>
 #include <span>
-#include <stdexcept>
 #include <tuple>
 #include <vector>
 
@@ -29,19 +25,19 @@ namespace fms::iterable {
 	concept has_begin = requires(I i) {
 		{ i.begin() };
 	};
-	static_assert(has_begin<std::array<int, 3>>);
+	static_assert(has_begin<std::array<int, 1>>);
 
 	template<class I>
 	concept has_end = requires(I i) {
 		{ i.end() } ;
 	};
-	static_assert(has_end<std::array<int, 3>>);
+	static_assert(has_end<std::array<int, 1>>);
 
 	template<class I>
 	concept has_size = requires(I i) {
-		{ i.size() } -> std::convertible_to <std::size_t> ;
+		{ i.size() } -> std::same_as<std::size_t>;
 	};
-	static_assert(has_size<std::array<int, 3>>);
+	static_assert(has_size<std::array<int, 1>>);
 
 	template<class I>
 	concept is_endable = has_end<I> || has_size<I>;
@@ -52,6 +48,10 @@ namespace fms::iterable {
 	concept forward_iterable = std::forward_iterator<I> && has_operator_bool<I>;
 	template<class I, class T>
 	concept output_iterable = std::output_iterator<I,T> && has_operator_bool<I>;
+	template<class I>
+	concept bidirectional_iterable = std::bidirectional_iterator<I> && has_operator_bool<I>;
+	template<class I>
+	concept random_access_iterable = std::random_access_iterator<I> && has_operator_bool<I>;
 
 #pragma endregion
 #pragma region Functions
@@ -86,20 +86,21 @@ namespace fms::iterable {
 		}
 	}
 
-	// length(i,j) = length(i) + length(j)
-	template<class I> // std::weakly_incrementable???
+	// length(concatentate(i,j)) = length(i) + length(j)
+	template<std::weakly_incrementable I>
 	constexpr std::size_t length(I i, std::iter_difference_t<I> n = 0)
 	{
 		if constexpr (has_end<I>) {
 			return n + std::distance(i, i.end());
 		}
-		if constexpr (has_size<I>) {
+		else if constexpr (has_size<I>) {
 			return n + i.size();
 		}
-
-		while (i) { // !!! dangerous, could be infinite ??? throw
-			++i;
-			++n;
+		else {
+			while (i) { // !!! dangerous, could be infinite ??? throw
+				++i;
+				++n;
+			}
 		}
 
 		return n;
@@ -117,26 +118,9 @@ namespace fms::iterable {
 	{
 		return std::equal(iterable::begin(i), iterable::end(i), iterable::begin(j), iterable::end(j));
 	}
-
-	template<class I> // std::w_i
-	constexpr I drop(I i, std::size_t n = 1)
-	{
-		if constexpr (has_end<I>) {
-			return std::next(i, std::min(n, std::distance(i, i.end())));
-		}
-		if constexpr (has_size<I>) {
-			return std::next(i, std::min(n, i.size()));
-		}
-		while (i && n) {
-			++i;
-			--n;
-		}
-
-		return i;
-	}
-
+	
 	template<input_iterable I, std::weakly_incrementable J>
-		requires std::indirectly_copyable<I, J> && has_operator_bool<J>
+		requires std::indirectly_copyable<I, J>&& has_operator_bool<J>
 	constexpr J copy(I i, J j)
 	{
 		while (i and j) {
@@ -147,19 +131,185 @@ namespace fms::iterable {
 
 		return j;
 	}
-	template<input_iterable I, std::weakly_incrementable J>
-		requires std::indirectly_copyable<I, J>&& has_operator_bool<J>
-	constexpr J copy_n(I i, std::size_t n, J j)
+	// copy_n(i, n, j) is copy(take(n, i), j)
+
+	template<bidirectional_iterable I>
+	class reverse {
+		I rb, re;
+	public:
+		using value_type = std::iter_value_t<I>;
+		using difference_type = std::iter_difference_t<I>;
+		using reference_type = std::iter_reference_t<I>;
+
+		reverse(I i)
+			: rb{ --end(i) }, re{ --begin(i) }
+		{ }
+
+		constexpr explicit operator bool() const
+		{
+			return rb != re;
+		}
+		constexpr value_type operator*() const
+		{
+			return *rb;
+		}
+		constexpr I& operator++()
+		{
+			if (re < rb) {
+				--rb;
+			}
+
+			return *this;
+		}
+		constexpr I operator++(int)
+		{
+			auto tmp{ *this };
+			operator++();
+
+			return tmp;
+		}
+		constexpr I& operator--()
+		{
+			if (rb < re) {
+				++rb;
+			}
+
+			return *this;
+		}
+		constexpr I operator--(int)
+		{
+			auto tmp{ *this };
+			operator--();
+
+			return tmp;
+		}
+		// operator+= requires std::random_access_iterator<I> ...
+	};
+
+	// count as first argument is more readable
+	template<std::weakly_incrementable I>
+	constexpr I drop(std::iter_difference_t<I> n, I i)
 	{
-		while (n and i and j) {
-			*j = *i;
-			++i;
-			--n;
-			++j;
+		if (n == 0) {
+			return i;
+		}
+		else if (n < 0) {
+			return reverse(drop(-n, reverse(i)));
+		}
+		else if constexpr (has_end<I>) {
+			return std::next(i, std::min(n, std::distance(i, i.end())));
+		}
+		else if constexpr (has_size<I>) {
+			return std::next(i, std::min(n, i.size()));
+		}
+		else {
+			while (i && n) {
+				++i;
+				--n;
+			}
 		}
 
-		return j;
+		return i;
 	}
+
+	// truncate iterable at n
+	template<input_iterable I>
+	class counted : public I {
+		std::size_t n;
+	public:
+		counted(I i, std::size_t n)
+			: I{ i }, n{ n }
+		{ }
+		constexpr explicit operator bool() const
+		{
+			return n and I::operator bool();
+		}
+		counted& operator++()
+		{
+			if (n > 0) {
+				I::operator++();
+				--n;
+			}
+
+			return *this;
+		}
+		constexpr counted operator++(int)
+		{
+			auto tmp{ *this };
+			operator++();
+
+			return tmp;
+		}
+		// operator--, ...
+	};
+
+	template<input_iterable I>
+	constexpr auto take(std::iter_difference_t<I> n, I i)
+	{
+		if (n == 0) {
+			return counted(i, 0);
+		}
+		else if (n < 0) {
+			return reverse(counted(reverse(i), -n));
+		}
+		else {
+			return counted(i, n);
+		}
+	}
+
+	// c, ...
+	template<class T>
+	class constant {
+		T t;
+	public:
+		using value_type = T;
+		using difference_type = std::iter_difference_t<T*>;
+		using reference = T&;
+
+		constexpr constant(T t = 0)
+			: t{ t }
+		{}
+
+		constexpr explicit operator bool() const
+		{
+			return true;
+		}
+		constexpr value_type operator*() const
+		{
+			return t;
+		}
+		constexpr constant& operator++()
+		{
+			return *this;
+		}
+		constexpr constant operator++(int)
+		{
+			constant tmp{ *this };
+			return tmp;
+		}
+		constexpr constant& operator--()
+		{
+			return *this;
+		}
+		constexpr constant operator--(int)
+		{
+			return *this;
+		}
+		// operator--(), operator--(int), operator+(int), operator-(int), operator+=(int), operator-=(int)
+	};
+
+
+	template<class T>
+	constexpr auto singleton(T t)
+	{
+		return take(1, constant<T>(t));
+	}
+#ifdef _DEBUG
+	static_assert(singleton(1).operator bool());
+	static_assert(singleton(1));
+	static_assert(*singleton(1) == 1);
+	static_assert(!++singleton(1));
+#endif // _DEBUG
 
 #pragma endregion
 
@@ -298,102 +448,6 @@ namespace fms::iterable {
 	}
 #endif // _DEBUG
 
-	template<class T>
-	class constant {
-		T t;
-	public:
-		using value_type = T;
-		using difference_type = std::iter_difference_t<T*>;
-		using reference = T&;
-
-		constexpr constant(T t = 0)
-			: t{ t }
-		{ }
-
-		constexpr explicit operator bool() const
-		{
-			return true;
-		}
-		constexpr value_type operator*() const
-		{
-			return t;
-		}
-		constexpr constant& operator++()
-		{
-			return *this;
-		}
-		constexpr constant operator++(int)
-		{
-			constant tmp{ *this };
-			return tmp;
-		}
-		// operator--(), operator--(int), operator+(int), operator-(int), operator+=(int), operator-=(int)
-	};
-
-	// take the first n values of an iterable
-	template<input_iterable I>
-	class take : public I {
-		std::size_t n;
-	public:
-		// inherit using definitions from I
-		constexpr take(I i, std::size_t n)
-			: I{ i }, n{ n }
-		{}
-
-		constexpr explicit operator bool() const
-		{
-			return n > 0 && I::operator bool();
-		}
-		constexpr I::value_type operator*() const
-		{
-			return I::operator*();
-		}
-		constexpr take& operator++()
-		{
-			--n;
-			I::operator++();
-
-			return *this;
-		}
-		constexpr take operator++(int)
-		{
-			take tmp{ *this };
-			++*this;
-
-			return tmp;
-		}
-	};
-#ifdef _DEBUG
-	/*
-	// take inherits iterator_category from I
-	static_assert(std::same_as<take<empty<int>>::iterator_category, empty<int>::iterator_category>);
-	static_assert(0 == length(take(empty<int>(), 1)));
-	static_assert(2 == length(take(empty<int>(), 1), 2));
-	*/
-#endif // _DEBUG
-	template<class T>
-	constexpr auto empty()
-	{
-		return take(constant<T>(), 0);
-	}
-#ifdef _DEBUG
-	static_assert(!empty<int>().operator bool());
-	static_assert(!empty<int>());
-	constexpr auto e = (++empty<int>()).operator bool();
-	//static_assert(!++empty<int>());
-#endif // _DEBUG
-
-	template<class T>
-	constexpr auto singleton(T t)
-	{
-		return take(constant<T>(t), 1);
-	}
-#ifdef _DEBUG
-	static_assert(singleton(1).operator bool());
-	static_assert(singleton(1));
-	static_assert(*singleton(1) == 1);
-	static_assert(!++singleton(1));
-#endif // _DEBUG
 
 	// on the fly iterable
 	template<class T>
