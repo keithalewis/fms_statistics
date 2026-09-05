@@ -133,6 +133,56 @@ namespace fms::iterable {
 	}
 	// copy_n(i, n, j) is copy(take(n, i), j)
 
+	// t, op(t, dt), op(op(t, dt), dt), ...
+	template<class Op, class T, class dT = T>
+	class scan {
+		static Op op;
+		T t;
+		dT dt;
+	public:
+		using value_type = std::invoke_result_t<Op, T, dT>;
+
+		constexpr scan(const T& t, const dT& dt = 1)
+			: t{ t }, dt{ dt }
+		{}
+
+		constexpr bool operator==(const scan& s)
+		{
+			return t == s.t and dt == s.dt; // Op must be same
+		}
+
+		constexpr explicit operator bool() const
+		{
+			return true;
+		}
+		constexpr value_type operator*() const
+		{
+			return t;
+		}
+		constexpr scan& operator++()
+		{
+			t = op(t, dt);
+
+			return *this;
+		}
+		constexpr scan operator++(int)
+		{
+			auto tmp{ *this };
+			operator++();
+
+			return tmp;
+		}
+	};
+
+	template<class T, class dT = T>
+	using scan_plus = scan<std::plus<T>, T>;
+#ifdef _DEBUG
+	static_assert(std::same_as<int, scan_plus<int>::value_type);
+	static_assert(0 == *scan_plus(0));
+	static_assert(1 == *++scan_plus(0));
+	static_assert(1 == *scan_plus(1));
+#endif // _DEBUG
+
 	template<bidirectional_iterable I>
 	class reverse {
 		I rb, re;
@@ -220,6 +270,20 @@ namespace fms::iterable {
 		counted(I i, std::size_t n)
 			: I{ i }, n{ n }
 		{ }
+
+		constexpr auto begin() const
+		{
+			return *this;
+		}
+		constexpr auto end() const
+		{
+			if constexpr (std::random_access_iterator<I>) {
+				return I::operator+(n);
+			}
+			else {
+				return std::next(*this, n);
+			}
+		}
 		constexpr explicit operator bool() const
 		{
 			return n and I::operator bool();
@@ -240,6 +304,20 @@ namespace fms::iterable {
 
 			return tmp;
 		}
+		constexpr counted& operator--()
+		{
+			I::operator--();
+			++n;
+
+			return *this;
+		}
+		constexpr counted operator--(int)
+		{
+			auto tmp{ *this };
+			operator--();
+
+			return tmp;
+		}
 		// operator--, ...
 	};
 
@@ -249,12 +327,11 @@ namespace fms::iterable {
 		if (n == 0) {
 			return counted(i, 0);
 		}
-		else if (n < 0) {
-			return reverse(counted(reverse(i), -n));
+		if (n < 0) {
+			return i;// reverse(counted(reverse(i)), -n);
 		}
-		else {
-			return counted(i, n);
-		}
+
+		return counted(i, n);
 	}
 
 	// c, ...
@@ -272,6 +349,11 @@ namespace fms::iterable {
 		constant(const constant&) = default;
 		constant& operator=(const constant&) = default;
 		~constant() = default;
+
+		constexpr bool operator==(const constant& t) const
+		{
+			return t = t.t;
+		}
 
 		constexpr explicit operator bool() const
 		{
@@ -301,7 +383,7 @@ namespace fms::iterable {
 		// operator--(), operator--(int), operator+(int), operator-(int), operator+=(int), operator-=(int)
 	};
 
-
+/*
 	template<class T>
 	constexpr auto singleton(T t)
 	{
@@ -313,7 +395,7 @@ namespace fms::iterable {
 	static_assert(*singleton(1) == 1);
 	static_assert(!++singleton(1));
 #endif // _DEBUG
-
+*/
 #pragma endregion
 
 	// turn begin/end into an iterable::iterator
@@ -727,11 +809,11 @@ namespace fms::iterable {
 	static_assert(*++iota(0) == 1);
 
 	// Op(*i, *j), Op(*++i, ++j), ...
-	template<class I, class J, class Op>
+	template<class Op, class I, class J>
 	class iterator_op {
+		Op op;
 		I i;
 		J j;
-		Op op;
 	public:
 		using value_type = decltype(op(*i, *j));
 		// difference_type
@@ -740,7 +822,7 @@ namespace fms::iterable {
 			: i{ i }, j{ j }, op{ op }
 		{ }
 
-		constexpr operator==(iterator_op o)
+		constexpr bool operator==(iterator_op o)
 		{
 			return i = o.i and j = o.j and op = o.op;
 		}
@@ -752,6 +834,20 @@ namespace fms::iterable {
 		constexpr value_type operator*() const
 		{
 			return op(*i, *j);
+		}
+		iterator_op& operator++()
+		{
+			++i;
+			++j;
+
+			return *this;
+		}
+		iterator_op operator++(int)
+		{
+			auto tmp{ *this };
+			operator++();
+
+			return tmp;
 		}
 	};
 

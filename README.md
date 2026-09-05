@@ -1,16 +1,22 @@
 # fms_statistics
 
-Streamable statistics functions.
+Streamable statistical functions.
 
-An _iterable_ is an iterator that has an `operator bool() const` instead
-of a `std::ranges` sentinal. This is not a new idea.
-They are similar to C# `IEnumerator`s. Implementations of that
+## Iterable
+
+An _iterable_ is an iterator that has an `explicig operator bool() const` 
+instead of a `std::ranges` sentinal. 
+
+This is not a new idea.
+It is similar to C# `IEnumerator`s. Implementations of that
 interface are required to supply `bool MoveNext()`,
 `object Current()`, and `void Reset()`.
 
 In C++ `MoveNext` is replaced by `operator++()` and its return value
 is replace by `operator bool()`. `Current` is just `operator*()` and
 `Reset()` is replaced by the concept `std::forward_iterator`.
+This is ubiqutous in Linq which is notorious for its poor performance.
+The superiour expresivness of C++ allows for finer grade control. 
 
 The major design flaw in `std::ranges` is to require sentinals
 that may be a different type than an iterator. This leads
@@ -26,7 +32,9 @@ and `factorial()` yields $1$, $1$, $2$, $6\ldots$. The
 function `epsilon` truncates the quotient iterable
 when it is less than machine epsilon so the `sum` is finite.
 It is not the most efficent way to implement `exp` but it
-shows the expressive power of iterables.
+shows the expressive power of iterables. Since $\exp(x + n)
+= \exp(x)\exp(n)$ for any integer $n$, precomputing
+$\exp(n)$ allows reducing to $0\le x < 1$.
 
 
 
