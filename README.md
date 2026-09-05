@@ -19,10 +19,15 @@ just composing functions.
 
 For example, the function $\exp(x) = \sum_{n=0}^\infty x^n/n!$
 can be expressed by
-`exp(double x) { return sum(epsilon(pow(x)/factorial())); }`,
+`double exp(double x) { return sum(epsilon(pow(x)/factorial())); }`,
 
-The iterable `pow(x)` provided the iterable $1$, $x$, $x^2\ldots$
-and factorial is $1$, $1$, $21$, $6\ldots$. THe
-function `epsilon` truncates the iterable when the qutient
-is below machine epsilon so the `sum` is finite.
+The iterable `pow(x)` provides $1$, $x$, $x^2$, $x^3\ldots$
+and `factorial()` yields $1$, $1$, $2$, $6\ldots$. The
+function `epsilon` truncates the quotient iterable
+when it is less than machine epsilon so the `sum` is finite.
+It is not the most efficent way to implement `exp` but it
+shows the expressive power of iterables.
+
+
+
 

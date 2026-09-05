@@ -268,7 +268,10 @@ namespace fms::iterable {
 
 		constexpr constant(T t = 0)
 			: t{ t }
-		{}
+		{ }
+		constant(const constant&) = default;
+		constant& operator=(const constant&) = default;
+		~constant() = default;
 
 		constexpr explicit operator bool() const
 		{
@@ -390,7 +393,7 @@ namespace fms::iterable {
 	}
 #endif // _DEBUG
 
-	// on the fly iterable
+	// on the fly iterable ??? too complicated
 	template<class T, std::size_t N>
 	class array : private std::array<T, N>, public iterator<T*> {
 		using a = std::array<T, N>;
@@ -715,7 +718,6 @@ namespace fms::iterable {
 			return tmp;
 		}
 		// operatator--(), operator--(int), operator+(int), operator-(int), operator+=(int), operator-=(int)
-
 	};
 	static_assert(input_iterable<iota<int>>);
 	static_assert(iota<int>().operator bool());
@@ -724,50 +726,34 @@ namespace fms::iterable {
 	static_assert(*iota(1) == 1);
 	static_assert(*++iota(0) == 1);
 
-	// init, init + step, ..., init + (size - 1) * step
-	template<class T>
-	class stride {
-		T init, step;
-		size_t size;
+	// Op(*i, *j), Op(*++i, ++j), ...
+	template<class I, class J, class Op>
+	class iterator_op {
+		I i;
+		J j;
+		Op op;
 	public:
-		using iterator_category = std::iterator_traits<T*>::iterator_category;
-		using value_type = T;
-		using difference_type = ptrdiff_t;
-		using pointer = T*;
-		using reference = T&;
-
-		constexpr stride(T init, T step = 1, std::size_t size = std::numeric_limits<size_t>::max())
-			: init{ init }, step{ step }, size{ size }
+		using value_type = decltype(op(*i, *j));
+		// difference_type
+		// reference
+		iterator_op(I i, J j, Op op)
+			: i{ i }, j{ j }, op{ op }
 		{ }
+
+		constexpr operator==(iterator_op o)
+		{
+			return i = o.i and j = o.j and op = o.op;
+		}
+
 		constexpr explicit operator bool() const
 		{
-			return size > 0;
+			return i and j;
 		}
-		constexpr T operator*() const
+		constexpr value_type operator*() const
 		{
-			return init;
-		}
-		constexpr stride& operator++() {
-			init += step;
-			--size;
-
-			return *this;
-		}
-		constexpr stride operator++(int) {
-			stride tmp{ *this };
-			operator++();
-			
-			return tmp;
+			return op(*i, *j);
 		}
 	};
-	static_assert(input_iterable<stride<int>>);
-	static_assert(stride(0, 1).operator bool());
-	static_assert(*stride(0, 1) == 0);
-	static_assert(*stride(1, 1) == 1);
-	static_assert(*++stride(0, 1) == 1);
-	static_assert(*++stride(2, 3) == 5);
-	static_assert(*++stride(2, -3) == -1);
-	static_assert(*++stride(-2, -3) == -5);
 
 
 	// [a, b) TODO: allow a > b?
